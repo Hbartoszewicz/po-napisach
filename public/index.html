@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Po Napisach</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <h1>Po Napisach</h1>
+      <p>
+        Prosty serwis do zapisywania filmów i dzielenia się wrażeniami po
+        seansie.
+      </p>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <h2>Dodaj film</h2>
+
+        <form id="movieForm">
+          <label>
+            Adres URL do strony imdb.com filmu
+            <input type="text" id="movieUrl" />
+          </label>
+
+          <label>
+            Tytuł filmu
+            <input type="text" id="movieTitle" />
+          </label>
+
+          <label>
+            Rok produkcji
+            <input type="text" id="movieYear" />
+          </label>
+
+          <button type="submit">Dodaj film</button>
+        </form>
+
+        <p id="message" class="message"></p>
+      </section>
+
+      <section>
+        <h2>Lista filmów</h2>
+        <div id="moviesList" class="movies-list"></div>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>

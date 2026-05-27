@@ -17,6 +17,28 @@
 
     <main class="container">
       <section class="card">
+        <h2>Logowanie</h2>
+
+        <form id="loginForm">
+          <label>
+            Nazwa użytkownika
+            <input type="text" id="username" />
+          </label>
+
+          <button type="submit">Zaloguj</button>
+        </form>
+
+        <div id="userPanel" class="user-panel hidden">
+          <p>
+            Zalogowano jako <strong id="currentUser"></strong>
+          </p>
+          <button type="button" id="logoutButton">Wyloguj</button>
+        </div>
+
+        <p id="loginMessage" class="message"></p>
+      </section>
+
+      <section class="card">
         <h2>Dodaj film</h2>
 
         <form id="movieForm">
@@ -39,6 +61,9 @@
         </form>
 
         <p id="message" class="message"></p>
+        <p id="movieLoginInfo" class="login-required">
+          Zaloguj się, aby dodać film.
+        </p>
       </section>
 
       <section>

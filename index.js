@@ -1,29 +1,49 @@
 const express = require("express");
+const session = require("express-session");
 const path = require("path");
+const JSONdb = require("simple-json-db");
 
 const app = express();
 const PORT = 3000;
-
+const db = new JSONdb(path.join(__dirname, "database.json"));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(
+  session({
+    secret: "po-napisach-session-secret",
+    resave: false,
+    saveUninitialized: false,
+  }),
+);
 app.use(express.static(path.join(__dirname, "public")));
 
-let movies = [];
+let movies = db.get("movies") || [];
 
-const randomUsers = [
-  "FilmowyLis",
-  "KinoManiak",
-  "PopcornowyJan",
-  "SeansowaOla",
-  "RetroWidz",
-  "OscarowyFan",
-  "PoNapisachUser",
-];
+function saveMovies() {
+  db.set("movies", movies);
+}
 
-function getRandomUser() {
-  const index = Math.floor(Math.random() * randomUsers.length);
-  return randomUsers[index];
+function normalizeStoredMovies() {
+  movies.forEach((movie) => {
+    movie.comments.forEach((comment) => {
+      comment.score = Number(comment.score || 0);
+      delete comment.votes;
+    });
+  });
+}
+
+normalizeStoredMovies();
+saveMovies();
+
+function requireLogin(req, res, next) {
+  if (!req.session.username) {
+    return res.status(401).json({
+      message: "Musisz się zalogować, aby wykonać tę akcję.",
+    });
+  }
+
+  next();
 }
 
 function isValidUrl(url) {
@@ -44,8 +64,7 @@ function movieExists(imdbId, url, title, year) {
     (movie) =>
       movie.imdbId === imdbId ||
       movie.url.toLowerCase() === url.toLowerCase() ||
-      (movie.title.toLowerCase() === title.toLowerCase() &&
-        movie.year === year),
+      (movie.title.toLowerCase() === title.toLowerCase() && movie.year === year),
   );
 }
 
@@ -62,8 +81,6 @@ async function fetchMovieFromOmdb(imdbId) {
 
     if (data.Response === "True") {
       return {
-        title: data.Title,
-        year: data.Year,
         rated: data.Rated,
         released: data.Released,
         runtime: data.Runtime,
@@ -92,10 +109,38 @@ app.get("/api/movies", (req, res) => {
   res.json(movies);
 });
 
-app.post("/api/movies", async (req, res) => {
-  console.log("Otrzymano POST /api/movies");
-  console.log("Body:", req.body);
+app.get("/api/session", (req, res) => {
+  res.json({
+    username: req.session.username || null,
+  });
+});
 
+app.post("/api/login", (req, res) => {
+  const username = normalizeText(req.body.username);
+
+  if (!username) {
+    return res.status(400).json({
+      message: "Podaj nazwę użytkownika.",
+    });
+  }
+
+  req.session.username = username;
+
+  res.json({
+    message: "Zalogowano.",
+    username,
+  });
+});
+
+app.post("/api/logout", (req, res) => {
+  req.session.destroy(() => {
+    res.json({
+      message: "Wylogowano.",
+    });
+  });
+});
+
+app.post("/api/movies", requireLogin, async (req, res) => {
   const url = normalizeText(req.body.url);
   const title = normalizeText(req.body.title);
   const year = normalizeText(req.body.year);
@@ -120,8 +165,6 @@ app.post("/api/movies", async (req, res) => {
 
   const imdbId = extractImdbId(url);
 
-  console.log("Wyciągnięte IMDb ID:", imdbId);
-
   if (!imdbId) {
     return res.status(400).json({
       message: "Adres URL musi zawierać poprawne IMDb ID, np. tt0111161.",
@@ -136,19 +179,15 @@ app.post("/api/movies", async (req, res) => {
 
   const movieFromApi = await fetchMovieFromOmdb(imdbId);
 
-  console.log("Dane filmu z API:", movieFromApi);
-
   const movie = {
     id: Date.now().toString(),
     imdbId,
     url,
-
     title,
     year,
     poster:
       movieFromApi?.poster ||
       `https://placehold.co/300x450?text=${encodeURIComponent(title)}`,
-
     rated: movieFromApi?.rated || "",
     released: movieFromApi?.released || "",
     runtime: movieFromApi?.runtime || "",
@@ -161,11 +200,11 @@ app.post("/api/movies", async (req, res) => {
     imdbRating: movieFromApi?.imdbRating || "",
     imdbVotes: movieFromApi?.imdbVotes || "",
     type: movieFromApi?.type || "",
-
     comments: [],
   };
 
   movies.push(movie);
+  saveMovies();
 
   res.status(201).json({
     message: "Film został dodany.",
@@ -173,7 +212,7 @@ app.post("/api/movies", async (req, res) => {
   });
 });
 
-app.post("/api/movies/:id/comments", (req, res) => {
+app.post("/api/movies/:id/comments", requireLogin, (req, res) => {
   const movie = movies.find((item) => item.id === req.params.id);
   const text = normalizeText(req.body.text);
 
@@ -192,15 +231,51 @@ app.post("/api/movies/:id/comments", (req, res) => {
   const comment = {
     id: Date.now().toString(),
     text,
-    user: getRandomUser(),
+    user: req.session.username,
     date: new Date().toLocaleString("pl-PL"),
+    score: 0,
   };
 
   movie.comments.push(comment);
+  saveMovies();
 
   res.status(201).json({
     message: "Komentarz został opublikowany.",
     comment,
+  });
+});
+
+app.post("/api/movies/:movieId/comments/:commentId/vote", requireLogin, (req, res) => {
+  const movie = movies.find((item) => item.id === req.params.movieId);
+  const vote = Number(req.body.vote);
+
+  if (!movie) {
+    return res.status(404).json({
+      message: "Nie znaleziono filmu.",
+    });
+  }
+
+  const comment = movie.comments.find((item) => item.id === req.params.commentId);
+
+  if (!comment) {
+    return res.status(404).json({
+      message: "Nie znaleziono komentarza.",
+    });
+  }
+
+  if (vote !== 1 && vote !== -1) {
+    return res.status(400).json({
+      message: "Nieprawidłowy głos.",
+    });
+  }
+
+  comment.score = Number(comment.score || 0) + vote;
+  delete comment.votes;
+  saveMovies();
+
+  res.json({
+    message: "Głos zapisany.",
+    score: comment.score,
   });
 });
 

@@ -1,140 +1,254 @@
+const loginForm = document.getElementById("loginForm");
+const usernameInput = document.getElementById("username");
+const userPanel = document.getElementById("userPanel");
+const currentUser = document.getElementById("currentUser");
+const logoutButton = document.getElementById("logoutButton");
+const loginMessage = document.getElementById("loginMessage");
 const movieForm = document.getElementById("movieForm");
+const movieLoginInfo = document.getElementById("movieLoginInfo");
 const message = document.getElementById("message");
 const moviesList = document.getElementById("moviesList");
 
-function showMessage(text, type) {
-  message.textContent = text;
-  message.className = `message ${type}`;
+let loggedUser = null;
+
+const escapeHtml = (value) =>
+  String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+const voteKey = (movieId, commentId) => `po-napisach-voted-${movieId}-${commentId}`;
+const hasVoted = (movieId, commentId) => localStorage.getItem(voteKey(movieId, commentId)) === "true";
+const setVoted = (movieId, commentId) => localStorage.setItem(voteKey(movieId, commentId), "true");
+
+function showMessage(element, text, type) {
+  element.textContent = text;
+  element.className = `message ${type}`;
+}
+
+async function postJson(url, body = {}) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const result = await response.json();
+  return { response, result };
+}
+
+function updateAuthView() {
+  const isLogged = Boolean(loggedUser);
+
+  loginForm.classList.toggle("hidden", isLogged);
+  userPanel.classList.toggle("hidden", !isLogged);
+  movieForm.classList.toggle("hidden", !isLogged);
+  movieLoginInfo.classList.toggle("hidden", isLogged);
+  currentUser.textContent = loggedUser || "";
+}
+
+async function loadSession() {
+  const response = await fetch("/api/session");
+  const session = await response.json();
+
+  loggedUser = session.username;
+  updateAuthView();
 }
 
 async function loadMovies() {
   const response = await fetch("/api/movies");
-  const movies = await response.json();
+  renderMovies(await response.json());
+}
 
-  renderMovies(movies);
+function renderComments(movie) {
+  if (movie.comments.length === 0) {
+    return "<li>Brak komentarzy.</li>";
+  }
+
+  return movie.comments
+    .map((comment) => {
+      const disabled = hasVoted(movie.id, comment.id) ? "disabled" : "";
+      const voteButtons = loggedUser
+        ? `
+          <button type="button" class="vote-button" data-movie-id="${movie.id}" data-comment-id="${comment.id}" data-vote="1" ${disabled}>+</button>
+          <button type="button" class="vote-button" data-movie-id="${movie.id}" data-comment-id="${comment.id}" data-vote="-1" ${disabled}>-</button>
+        `
+        : "";
+
+      return `
+        <li>
+          <div class="comment-top">
+            <span>
+              <strong>${escapeHtml(comment.user)}</strong>
+              <small>(${escapeHtml(comment.date)})</small>
+            </span>
+            <span class="comment-votes">
+              <strong>${Number(comment.score || 0)}</strong>
+              ${voteButtons}
+            </span>
+          </div>
+          <p>${escapeHtml(comment.text)}</p>
+        </li>
+      `;
+    })
+    .join("");
+}
+
+function renderDetails(movie) {
+  const details = [
+    ["Gatunek", movie.genre],
+    ["Reżyser", movie.director],
+    ["Aktorzy", movie.actors],
+    ["Czas trwania", movie.runtime],
+    ["Premiera", movie.released],
+    ["Kraj", movie.country],
+    ["Ocena IMDb", movie.imdbRating !== "N/A" ? movie.imdbRating : ""],
+    ["Opis", movie.plot],
+  ];
+
+  return details
+    .filter(([, value]) => value)
+    .map(([label, value]) => `<p><strong>${label}:</strong> ${escapeHtml(value)}</p>`)
+    .join("");
 }
 
 function renderMovies(movies) {
-  moviesList.innerHTML = "";
-
   if (movies.length === 0) {
     moviesList.innerHTML = `<p class="empty">Nie dodano jeszcze żadnych filmów.</p>`;
     return;
   }
 
-  movies.forEach((movie) => {
-    const movieCard = document.createElement("article");
-    movieCard.className = "movie-card";
+  moviesList.innerHTML = movies
+    .map(
+      (movie) => `
+        <article class="movie-card">
+          <img class="movie-poster" src="${escapeHtml(movie.poster)}" alt="Plakat filmu ${escapeHtml(movie.title)}" />
 
-    movieCard.innerHTML = `
-  <img class="movie-poster" src="${movie.poster}" alt="Plakat filmu ${movie.title}" />
+          <div class="movie-info">
+            <h3>${escapeHtml(movie.title)} (${escapeHtml(movie.year)})</h3>
+            <a class="movie-link" href="${escapeHtml(movie.url)}" target="_blank">Otwórz stronę filmu</a>
 
-  <div class="movie-info">
-    <h3>${movie.title} (${movie.year})</h3>
+            <div class="movie-details">${renderDetails(movie)}</div>
+            <p><strong>Liczba komentarzy:</strong> ${movie.comments.length}</p>
 
-    <a class="movie-link" href="${movie.url}" target="_blank">
-      Otwórz stronę filmu
-    </a>
+            ${
+              loggedUser
+                ? `
+                  <form class="comment-form" data-id="${movie.id}">
+                    <input type="text" placeholder="Napisz komentarz..." />
+                    <button type="submit">Opublikuj</button>
+                  </form>
+                `
+                : `<p class="login-required">Zaloguj się, aby dodać komentarz.</p>`
+            }
 
-    <div class="movie-details">
-      ${movie.genre ? `<p><strong>Gatunek:</strong> ${movie.genre}</p>` : ""}
-      ${movie.director ? `<p><strong>Reżyser:</strong> ${movie.director}</p>` : ""}
-      ${movie.actors ? `<p><strong>Aktorzy:</strong> ${movie.actors}</p>` : ""}
-      ${movie.runtime ? `<p><strong>Czas trwania:</strong> ${movie.runtime}</p>` : ""}
-      ${movie.released ? `<p><strong>Premiera:</strong> ${movie.released}</p>` : ""}
-      ${movie.country ? `<p><strong>Kraj:</strong> ${movie.country}</p>` : ""}
-      ${movie.imdbRating && movie.imdbRating !== "N/A" ? `<p><strong>Ocena IMDb:</strong> ${movie.imdbRating}</p>` : ""}
-      ${movie.plot ? `<p><strong>Opis:</strong> ${movie.plot}</p>` : ""}
-    </div>
-
-    <p><strong>Liczba komentarzy:</strong> ${movie.comments.length}</p>
-
-        <form class="comment-form" data-id="${movie.id}">
-          <input type="text" placeholder="Napisz komentarz..." />
-          <button type="submit">Opublikuj</button>
-        </form>
-
-        <ul class="comments">
-          ${
-            movie.comments.length === 0
-              ? "<li>Brak komentarzy.</li>"
-              : movie.comments
-                  .map(
-                    (comment) => `
-                  <li>
-                    <strong>${comment.user}</strong>
-                    <small>(${comment.date})</small><br />
-                    ${comment.text}
-                  </li>
-                `,
-                  )
-                  .join("")
-          }
-        </ul>
-      </div>
-    `;
-
-    moviesList.appendChild(movieCard);
-  });
-
-  document.querySelectorAll(".comment-form").forEach((form) => {
-    form.addEventListener("submit", addComment);
-  });
+            <ul class="comments">${renderComments(movie)}</ul>
+          </div>
+        </article>
+      `,
+    )
+    .join("");
 }
+
+loginForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const { response, result } = await postJson("/api/login", { username: usernameInput.value });
+
+  if (!response.ok) {
+    showMessage(loginMessage, result.message, "error");
+    return;
+  }
+
+  loggedUser = result.username;
+  usernameInput.value = "";
+  showMessage(loginMessage, result.message, "success");
+  updateAuthView();
+  loadMovies();
+});
+
+logoutButton.addEventListener("click", async () => {
+  const { result } = await postJson("/api/logout");
+
+  loggedUser = null;
+  showMessage(loginMessage, result.message, "success");
+  updateAuthView();
+  loadMovies();
+});
 
 movieForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const url = document.getElementById("movieUrl").value;
-  const title = document.getElementById("movieTitle").value;
-  const year = document.getElementById("movieYear").value;
-
-  const response = await fetch("/api/movies", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ url, title, year }),
+  const { response, result } = await postJson("/api/movies", {
+    url: document.getElementById("movieUrl").value,
+    title: document.getElementById("movieTitle").value,
+    year: document.getElementById("movieYear").value,
   });
 
-  const result = await response.json();
-
   if (!response.ok) {
-    showMessage(result.message, "error");
+    showMessage(message, result.message, "error");
     return;
   }
 
-  showMessage(result.message, "success");
+  showMessage(message, result.message, "success");
   movieForm.reset();
   loadMovies();
 });
 
-async function addComment(event) {
-  event.preventDefault();
-
-  const form = event.target;
-  const movieId = form.dataset.id;
-  const input = form.querySelector("input");
-  const text = input.value;
-
-  const response = await fetch(`/api/movies/${movieId}/comments`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ text }),
-  });
-
-  const result = await response.json();
-
-  if (!response.ok) {
-    showMessage(result.message, "error");
+moviesList.addEventListener("submit", async (event) => {
+  if (!event.target.classList.contains("comment-form")) {
     return;
   }
 
-  showMessage(result.message, "success");
+  event.preventDefault();
+
+  const form = event.target;
+  const input = form.querySelector("input");
+  const { response, result } = await postJson(`/api/movies/${form.dataset.id}/comments`, {
+    text: input.value,
+  });
+
+  if (!response.ok) {
+    showMessage(message, result.message, "error");
+    return;
+  }
+
+  showMessage(message, result.message, "success");
   input.value = "";
   loadMovies();
+});
+
+moviesList.addEventListener("click", async (event) => {
+  if (!event.target.classList.contains("vote-button")) {
+    return;
+  }
+
+  const button = event.target;
+  const movieId = button.dataset.movieId;
+  const commentId = button.dataset.commentId;
+
+  if (hasVoted(movieId, commentId)) {
+    return;
+  }
+
+  const { response, result } = await postJson(
+    `/api/movies/${movieId}/comments/${commentId}/vote`,
+    { vote: Number(button.dataset.vote) },
+  );
+
+  if (!response.ok) {
+    showMessage(message, result.message, "error");
+    return;
+  }
+
+  setVoted(movieId, commentId);
+  loadMovies();
+});
+
+async function init() {
+  await loadSession();
+  await loadMovies();
 }
 
-loadMovies();
+init();

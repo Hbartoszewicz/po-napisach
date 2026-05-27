@@ -1,3 +1,4 @@
 node_modules/
 .codex_tmp_pypdf
 .env
+.database.json

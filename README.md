@@ -26,13 +26,3 @@ Następnie otwórz w przeglądarce:
 ```text
 http://localhost:3000
 ```
-
-## OMDb API
-
-W pliku `index.js` można wpisać własny klucz API:
-
-```js
-const OMDB_API_KEY = "TWOJ_KLUCZ";
-```
-
-Bez klucza aplikacja nadal działa, ale pokazuje plakat zastępczy.

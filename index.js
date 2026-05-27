@@ -4,8 +4,6 @@ const path = require("path");
 const app = express();
 const PORT = 3000;
 
-// Tutaj wpisz swój klucz z https://www.omdbapi.com/
-const OMDB_API_KEY = "TWOJ_KLUCZ_API";
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -145,8 +143,8 @@ app.post("/api/movies", async (req, res) => {
     imdbId,
     url,
 
-    title: movieFromApi?.title || title,
-    year: movieFromApi?.year || year,
+    title,
+    year,
     poster:
       movieFromApi?.poster ||
       `https://placehold.co/300x450?text=${encodeURIComponent(title)}`,
